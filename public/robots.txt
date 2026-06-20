@@ -1,0 +1,6 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Add after you know your production domain, e.g.:
+# Sitemap: https://your-app.vercel.app/sitemap.xml
