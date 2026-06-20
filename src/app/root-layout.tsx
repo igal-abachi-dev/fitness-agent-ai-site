@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { Outlet, ScrollRestoration } from 'react-router'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { usePageTitle } from '@/hooks/use-page-title'
+import { useRouteMeta } from '@/hooks/use-route-meta'
 import { useTheme } from '@/stores/useAppStore'
 
 /**
@@ -12,7 +12,7 @@ import { useTheme } from '@/stores/useAppStore'
  */
 export function RootLayout() {
   const theme = useTheme()
-  usePageTitle()
+  useRouteMeta()
 
   useEffect(() => {
     const root = document.documentElement
