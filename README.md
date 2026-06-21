@@ -6,8 +6,9 @@ a structured plan generator, a one-shot ask, and a streaming chat.
 
 The app frame (collapsible sidebar shell), routing, networking seam, typed API
 layer, state architecture, the **user profile** (collected once via a modal,
-persisted in `localStorage`), and the **Ask / Plan** form pages are all in
-place. The streaming **chat UI** is the next layer to build.
+persisted in `localStorage` as an interim measure — see
+[Planned user profiles](#planned-user-profiles)), and the **Ask / Plan** form
+pages are all in place. The streaming **chat UI** is the next layer to build.
 
 ---
 
@@ -30,8 +31,9 @@ npm run dev                  # → http://localhost:5173
 ```
 
 On first visit the **profile modal** opens (blocking until you save). Your
-assessment is stored in `localStorage` and reused for API calls. Edit it anytime
-from the sidebar footer.
+assessment is stored in `localStorage` for now and reused for API calls. Edit it
+anytime from the sidebar footer. Production persistence moves server-side — see
+[Planned user profiles](#planned-user-profiles).
 
 ### Day-to-day commands
 
@@ -213,10 +215,11 @@ Both `tsconfig.json` and `tsconfig.app.json` must keep `"@/*": ["./src/*"]`.
 
 ---
 
-## User profile
+## User profile (today)
 
 The coach needs an assessment (age, goal, equipment, …). Collected **once** via
-modal, stored in **`localStorage`** (no auth / backend user yet).
+modal and stored in **`localStorage`** until server-side profiles land (see
+[Planned user profiles](#planned-user-profiles)).
 
 - Schema: `src/features/profile/profile.schema.ts` (Zod → `CoachPlanRequest`)
 - State: `stores/slices/profile.slice.ts` (persisted via Zustand `partialize`)
@@ -228,17 +231,239 @@ import { useProfile, useOpenProfileModal } from '@/features/profile'
 
 ---
 
-## State boundaries
+## Planned user profiles
 
-- **TanStack Query** — server state (fetch, cache, mutations). Never copy into Zustand.
-- **Zustand** — client/UI state (theme, sidebar, drafts, profile). Only `theme` +
-  `profile` persisted to `localStorage`.
-- **React Router** — route state (params, loaders, errors).
-- **URL search params** — shareable filters/pagination.
-- **`useState`** — tiny local UI state.
+Health-adjacent profile data does not belong in `localStorage`. Any XSS can read
+the entire store. `sessionStorage` is not a fix — same exposure, shorter lifetime.
 
-Zustand v5: `set` shallow-merges; select primitives atomically; use `useShallow`
-for object selectors.
+### Target design
+
+```
+Browser                          Server (Render API + Neon Postgres)
+────────                         ────────────────────────────────────
+HttpOnly Secure cookie    →      encrypted fitness profile JSON
+(opaque profile / session id)    keyed by that id (Drizzle)
+```
+
+- **Browser** stores only an **HttpOnly, Secure** cookie with an opaque profile or
+  session id — nothing sensitive in JS-accessible storage.
+- **Server** stores the **encrypted fitness profile JSON** in Postgres.
+
+That gives persistence without re-prompting every visit, without putting assessment
+data where XSS can scrape it. This is exactly why the API scaffold includes
+**Neon Postgres + Drizzle** — the profile row is the first real table, not auth
+plumbing for its own sake.
+
+### Cross-site deployment (Vercel + Render)
+
+The frontend (`*.vercel.app`) and API (`*.onrender.com`) are **different
+registrable domains**. Every SPA call to the API is **cross-site**, not a classic
+same-origin BFF.
+
+That cross-site constraint also drives **auth provider** choice: anything with a
+redirect-based OAuth2 dance must round-trip back to the **API's domain**, not the
+SPA's.
+
+### Auth: Better Auth (recommended)
+
+For a free-tier side project, a **managed auth library backed by your existing
+database** is the higher-leverage path than rolling cookies by hand.
+
+[**Better Auth**](https://better-auth.com) fits this stack:
+
+- User / session / account tables live in the **same Neon database** via the
+  [**Drizzle adapter**](https://www.better-auth.com/docs/adapters/drizzle) (actively
+  maintained — native joins support landed recently).
+- A `profiles` row becomes a **foreign key to `user.id`** — one database, one
+  ownership model.
+- Fastify integration:
+  [Better Auth + Fastify](https://better-auth.com/docs/integrations/fastify).
+- The [**anonymous plugin**](https://www.better-auth.com/docs/plugins/anonymous) is
+  the **guest-cookie pattern** above, with a built-in **upgrade path** when the
+  user signs in — no throwaway local profile to migrate later.
+
+Sequencing: wire anonymous sessions + server-side profile storage first; add
+email/OAuth providers when you need accounts.
+
+### Auth alternatives (and why not)
+
+| Provider | Free tier | Fit for this repo |
+| -------- | --------- | ----------------- |
+| [**Clerk**](https://clerk.com) | 50K MAU (Feb 2026) | Best React SPA DX (`<SignIn />`, `useUser()`), but the user record lives in **Clerk**, not Neon. Profile rows key off a Clerk id; you run **two systems** with a webhook sync seam — fights the single-database design. Worth it if shipping speed beats data ownership; here it does not. |
+| **Auth0** | ~25K MAU | Heavier; Okta has a habit of tightening limits. |
+| **Supabase Auth** | ~50K MAU | Built for Supabase Postgres + RLS. Bolting onto Neon + Fastify is against the grain. |
+
+
+## State management
+
+For a modern React app in 2026, the clean default is **TanStack Query for server
+state + Zustand for client/UI state**. React Router owns URL and route lifecycle;
+local `useState` stays for tiny component-only bits.
+
+| State type | Use |
+| ---------- | --- |
+| Data from API / database | **TanStack Query** (`useQuery`, `useMutation`, cache, invalidation) |
+| Loading / error / retry for API data | **TanStack Query** |
+| Shareable filters, page, sort, tab | **React Router** search params |
+| Route loaders, actions, fetchers | **React Router** Data Mode |
+| Global UI (theme, sidebar, modals, drafts) | **Zustand** |
+| Durable preferences | **Zustand** + `persist` (`partialize` whitelist only) |
+| Component-only UI | **`useState` / `useReducer`** |
+| Complex forms | **React Hook Form** + Zod |
+| Strict finite-state workflows | **XState** (optional, feature-local only) |
+
+TanStack Query is explicitly a **server-state** library — caching, dedupe, stale
+data, retries, background refetch, mutations. After moving async/server data into
+Query, the remaining global client state is usually small. Do not duplicate fetched
+data into Zustand.
+
+### Why Zustand (not Jotai, Redux Toolkit, …)
+
+**Zustand vs Jotai**
+
+Both are small, TypeScript-friendly client-state libraries. The architectural fork
+is how they integrate with React:
+
+| | Zustand | Jotai |
+| - | ------- | ----- |
+| Model | Explicit external store (`getState`, `setState`, `subscribe`) | Atomic dependency graph (`atom`, derived atoms) |
+| React binding | `React.useSyncExternalStore` directly | `useReducer` + `store.sub` + `React.use` — **no** `useSyncExternalStore` |
+| Tearing under concurrency | Anti-tearing guarantee from React's official external-store primitive | Relies on Jotai's own atom propagation (works well in practice, not the same guarantee) |
+| Best for | Flat UI flags, feature-scoped stores, reads/writes outside React (loaders, actions) | Heavily derived/composed client state (spreadsheet-style atom graphs) |
+
+`useSyncExternalStore` is React's hook for subscribing to external stores in a way
+compatible with concurrent rendering. Zustand's vanilla store + thin React adapter
+is boring, explicit, and greppable — one store with typed slices beats dozens of
+scattered `fooAtom` files for team onboarding and review.
+
+Jotai is a strong #2 when client state is mostly **derived** (atoms depending on
+atoms). With TanStack Query already covering async/Suspense-heavy work, that need
+is rare in this app — so we install only Zustand.
+
+**Zustand slices vs Redux Toolkit**
+
+Redux Toolkit is excellent for strict action history, audit replay, and large-team
+conventions. Its React bindings also use `useSyncExternalStoreWithSelector` and are
+React 19–safe.
+
+But **RTK Query overlaps TanStack Query** — both solve server/cache state. If Query
+already owns fetching, caching, and invalidation, Redux mostly becomes ceremony for
+UI flags (`sidebarOpen`, `theme`, `selectedId`). Zustand slices give ~80–90% of the
+value with far less boilerplate: no providers, no action types, no root reducer.
+
+Use Redux Toolkit instead of Zustand only if you need centralized event architecture,
+time-travel debugging across the whole app, or a normalized client-side domain graph
+— not the default for React Router + TanStack Query + shadcn.
+
+**What we skip as defaults**
+
+- **Valtio** — proxy ergonomics (`state.theme = "dark"`) vs explicit actions; snapshot/proxy caveats.
+- **Preact Signals (React)** — fine-grained reactivity but adds another model on top of React + Query + Router.
+- **XState** — correct for real state machines (auth refresh, upload pipelines, multi-step wizards), not for `sidebarOpen` or table filters. Add `@xstate/react` only when a feature needs it.
+
+### Boundaries in this repo
+
+```
+Server data     →  TanStack Query     (coach ask/plan, future lists)
+Client UI       →  Zustand slices     (theme, sidebar, chat draft, profile modal)
+Route data      →  React Router       (params, loaders, errors)
+Shareable UI    →  URL search params  (when you add filters/pagination)
+Local only      →  useState           (one-off toggles inside a component)
+```
+
+**Never overlap Query and Zustand:**
+
+```tsx
+// ❌ wrong — duplicates server state, causes sync bugs
+const { data: users } = useUsersQuery()
+useEffect(() => {
+  useAppStore.getState().setUsers(users)
+}, [users])
+
+// ✅ Zustand holds query *inputs*; Query holds *results*
+const search = useAppStore((s) => s.userSearch)
+const usersQuery = useUsersQuery({ search })
+```
+
+Profile assessment lives in Zustand + `localStorage` **interim only** — it moves
+server-side; see [Planned user profiles](#planned-user-profiles). Store client flags
+(`sessionStatus`, `selectedTenantId`), not fetched user objects.
+
+Loaders and actions can read/write the store via `useAppStore.getState()` (no hook)
+— e.g. read filter inputs, fetch via `queryClient.ensureQueryData`. Do not
+subscribe inside loaders; reactivity belongs in components.
+
+### How we use Zustand (v5 slices)
+
+Layout matches [Zustand's slices pattern](https://zustand.docs.pmnd.rs/learn/guides/slices-pattern):
+
+```
+src/stores/
+  types.ts              # RootState = intersection of all slices
+  useAppStore.ts        # combined store + atomic selector hooks
+  slices/
+    ui.slice.ts         # theme, sidebar
+    chat-draft.slice.ts # ephemeral composer draft
+    profile.slice.ts    # assessment + modal (persisted until server profiles)
+```
+
+Each slice is a `StateCreator<RootState, [], [], ThisSlice>`. The combined store
+forwards `(set, get, store)` to every slice. **Middleware only on the combined
+store** — not inside individual slices.
+
+Persist uses `partialize` to whitelist durable fields only (`theme`, `profile`
+today). Never persist tokens, ephemeral UI, or server-fetched data.
+
+**Selector rules (v5-specific):**
+
+- Select **one primitive** per hook — re-render only when that field changes.
+- Actions are stable references; selecting `toggleSidebar` does not cause extra renders.
+- Multi-field object selectors need **`useShallow`** — v5 removed the built-in
+  equality fn; `{ a, b }` without shallow compare re-renders on every store change.
+- Never `const state = useAppStore()` with no selector — subscribes to the whole store.
+
+```tsx
+// ✅ atomic
+const sidebarOpen = useSidebarOpen()
+const toggleSidebar = useToggleSidebar()
+
+// ✅ multi-field
+import { useShallow } from 'zustand/react/shallow'
+const { openModal, closeModal } = useAppStore(
+  useShallow((s) => ({ openModal: s.openModal, closeModal: s.closeModal })),
+)
+```
+
+**`set` shallow-merges top-level keys only** (`Object.assign({}, state, partial)`).
+Nested updates must spread manually:
+
+```tsx
+set((s) => ({ filters: { ...s.filters, sort: 'desc' } })) // ✅
+set({ filters: { sort: 'desc' } })                         // ❌ wipes sibling keys
+```
+
+Use the curried form `create<RootState>()(...)` when combining slices with
+middleware — required for correct TypeScript inference.
+
+Outside React:
+
+```tsx
+useAppStore.getState().setTheme('dark')
+useAppStore.subscribe((s) => s.theme, (theme) => { /* … */ }) // needs subscribeWithSelector if added
+```
+
+Default to plain immutable updates in slices; reach for **immer middleware** only
+when a slice has genuinely deep nesting (editor/canvas state).
+
+### Checklist
+
+- ✅ Typed slices, explicit actions, small selector hooks
+- ✅ `useShallow` for object/array selector results
+- ✅ `partialize` for persist whitelist
+- ✅ Server data in Query only
+- ❌ Whole-store subscriptions
+- ❌ Copying `useQuery` data into Zustand
+- ❌ Persisting sensitive or ephemeral state
 
 ---
 
@@ -419,6 +644,8 @@ the contract.
 ## Planned (not yet wired)
 
 - **Chat UI**: message list, Markdown rendering, composer, virtualization
-- **Backend user record**: profile seeds server-side user when auth lands
+- **Server-side profiles + auth**: Better Auth anonymous sessions, encrypted
+  profile in Neon, HttpOnly cookie — see
+  [Planned user profiles](#planned-user-profiles)
 - **Chat persistence**: sidebar "Recent" is placeholder (no conversations API yet)
 - **CI + Prettier**: add typecheck → lint → test → build gate on PRs
