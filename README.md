@@ -330,6 +330,77 @@ Empty `VITE_API_BASE_URL` = same origin (useful behind nginx reverse proxy).
 
 ---
 
+## Why not a monorepo?
+
+This repo is the **frontend only**; the API lives in a
+[separate repo](https://github.com/igal-abachi-dev/ai-fitness-expert-coach).
+That split is deliberate: **Vercel for the UI, Render for the API** — each repo
+maps to one host with minimal one-time config and no workspace wiring.
+
+Deploy capability is a wash (both layouts work fine from one repo), but two repos
+genuinely mean less initial setup. A monorepo is not harder to maintain — maybe
+~10 minutes of one-time settings — but it is not literally zero either.
+
+### If you ever consolidated (deploy notes)
+
+**Render (API)** — leave Root Directory empty (repo root); build with workspace flags:
+
+```
+Root Directory:  (empty — repo root)
+Build Command:   npm ci && npm run build -w apps/api
+Start Command:   npm run start -w apps/api
+Build Filters → Included Paths:
+  apps/api/**
+  packages/contract/**
+  package-lock.json
+```
+
+Build filters stop a frontend-only push from rebuilding the backend. Paths are
+relative to the repo root regardless of Root Directory.
+
+**Vercel (web)** — monorepos are first-class:
+
+```
+Root Directory:  apps/web
+Ignored Build Step:  npx turbo-ignore   # or git diff apps/web + packages/contract
+```
+
+Root Directory is the only required setting; Ignored Build Step is optional
+(don't rebuild when only the backend changed).
+
+So: two extra-ish settings on Render, one on Vercel. The deploy story alone is
+not a reason to avoid a monorepo — but it was not zero either, and separate repos
+kept day-one setup simpler.
+
+### The real reason: shared types
+
+The split is not really about deploy — it is about **where the contract lives**.
+
+Today the client keeps generated OpenAPI types in `src/lib/api/v1.d.ts`
+(`npm run gen:api`) because two repos cannot share source. That codegen gives
+**types only**. Form validation re-implements the same rules in
+`src/features/profile/profile.schema.ts` — those two can drift.
+
+In a monorepo, a `packages/contract` exporting Zod schemas (e.g.
+`userAssessmentSchema`, response schemas) is the better end-state:
+
+- **Server** validates requests with it and still emits Swagger via
+  `fastify-type-provider-zod`
+- **Web** uses the same schema for React Hook Form + `z.infer` types
+- **No drift** — one definition, not types + a second Zod copy
+- Drop `openapi-typescript` and `v1.d.ts`; optionally `safeParse` plan responses
+  on the client too
+
+Some teams keep a generated-types boundary for looser coupling (client depends on
+HTTP contract only, not server Zod). That pays off with separate frontend/backend
+ownership at scale — less so on a solo project where you control both sides.
+
+**Clean end-state if consolidated:** `packages/contract` holds Zod (source of
+truth), server imports it for validation + OpenAPI, web imports it for forms +
+types. That is where a monorepo earns its setup cost — not deploy, the contract.
+
+---
+
 ## Planned (not yet wired)
 
 - **Chat UI**: message list, Markdown rendering, composer, virtualization
