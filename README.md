@@ -16,7 +16,7 @@ pages are all in place. The streaming **chat UI** is the next layer to build.
 
 ### Prerequisites
 
-- Node.js 20+ and npm
+- Node.js 20+ and **npm** (see [Build tool & app shape](#build-tool--app-shape))
 - Backend API running locally (default `http://localhost:3000`) for `/ask`, `/plan`,
   and `/chat` — optional for UI-only work
 
@@ -135,6 +135,223 @@ src/routes/*.tsx    Page components (home, chat, ask, plan, not-found)
 > `react-router` v8 uses the same data-mode API as v7 (`createBrowserRouter` +
 > route objects). which is like ssr:false
 
+See [Build tool & app shape](#build-tool--app-shape) for why we use Vite + Router
+data mode instead of Next.js or the React Router framework scaffold.
+
+---
+
+## Build tool & app shape
+
+This repo follows React’s [**build from scratch**](https://react.dev/learn/build-a-react-app-from-scratch)
+path — Vite as the bundler, React Router as the router library, and hand-picked
+tools for data fetching and UI — rather than a [**full-stack framework**](https://react.dev/learn/creating-a-react-app#full-stack-frameworks)
+scaffold.
+
+That is a deliberate fit for this product: a **client-only SPA** whose API lives in a
+[separate Fastify repo on Render](https://github.com/igal-abachi-dev/ai-fitness-expert-coach).
+The frontend deploys as static files on Vercel. We do not run a Node server for HTML,
+RSC, or SSR in this repo.
+
+### Scaffold we used (and still recommend)
+
+```bash
+npm create vite@latest my-app -- --template react-ts
+```
+
+Then add React Router **as a library** in [data mode](https://reactrouter.com/start/data/installation)
+(`createBrowserRouter` + `RouterProvider`), not via the framework CLI.
+
+| Layer | Choice | Role |
+| ----- | ------ | ---- |
+| Build / dev | **Vite** | Fast HMR, ES modules, production bundle → `dist/` |
+| Routing | **React Router** (data APIs) | Route tree, lazy pages, loaders/actions, errors |
+| Rendering | **SPA, SSR off** | Single `index.html`, client mounts `#root` — implicit with this setup |
+
+Vite starts as a client-only SPA. React Router data mode adds loaders, actions,
+`useFetcher`, and error boundaries **without** turning the project into a full-stack
+app. There is no server entry, no streaming HTML, no React Server Components — which
+matches `root-layout` safely using `document`, `localStorage`, and theme classes.
+
+The React docs note that full-stack frameworks can opt into SSR/SSG/RSC **per route**
+later; we simply do not need that here. Cross-origin API calls, SSE chat streaming,
+and static hosting are simpler when the browser owns the whole UI lifecycle.
+
+### Why not Next.js (`create-next-app`)?
+
+```bash
+# not used for this project
+npx create-next-app@latest
+```
+
+Next.js App Router is React’s flagship [**full-stack framework**](https://react.dev/learn/creating-a-react-app#full-stack-frameworks)
+(RSC, SSR, streaming, server actions, file-based routing). Strong choice when UI and
+API share one deployment and you want server rendering.
+
+For **this** repo it adds weight without payoff:
+
+- API is already **Fastify on Render** — not Next Route Handlers or Server Actions.
+- Deploy target is **static `dist/` on Vercel** — no Node runtime required for pages.
+- Features like RSC, SSR, and middleware auth belong on the server we already have
+  (or will add via Better Auth on the API), not duplicated in the frontend framework.
+- SEO needs are met with static meta in `index.html` + per-route titles; we are not
+  building a content site that requires SSR for crawlers.
+
+Use Next when the app *is* the backend. Here the SPA is a thin client over a remote API.
+
+### Why not React Router framework mode (`create-react-router`)?
+
+```bash
+# not used for this project
+npx create-react-router@latest
+```
+
+The React team lists [**React Router as a full-stack framework**](https://react.dev/learn/creating-a-react-app#react-router-v7)
+when paired with its official scaffold — Vite-based, but opinionated toward SSR,
+loaders that run on the server, and deploy templates with a server runtime.
+
+We want **only the router library**:
+
+- `createBrowserRouter` + lazy route modules under `src/routes/`
+- Client-side loaders that call `queryClient.ensureQueryData` (browser + TanStack Query)
+- No server bundle, no hydration mismatch concerns, no framework directory conventions
+  layered on top of an otherwise simple Vite SPA
+
+Same router, fewer moving parts — data mode without the full-stack wrapper.
+
+### Why not TanStack Start?
+
+[TanStack Start](https://tanstack.com/start/) is an up-and-coming full-stack React
+framework (SSR, server functions, Nitro). React’s docs list it under
+[other frameworks](https://react.dev/learn/creating-a-react-app#other-frameworks) — still **beta**.
+
+For routing alone, **React Router** is the mature default (widest adoption, data mode
+APIs we already use, integrates cleanly with Vite as a library). TanStack Start is
+compelling if you commit to the whole TanStack stack and server rendering; it is not
+the right default for a static SPA talking to an external API.
+
+### npm (not pnpm, yarn, or bun)
+
+This repo standardizes on **npm**:
+
+```bash
+npm install
+npm run dev
+```
+
+| Package manager | Why we skip it as the default |
+| --------------- | ----------------------------- |
+| **pnpm** | Fast and strict, but extra setup (`corepack`, isolated store) — friction on Windows/corporate machines and for contributors who only have Node + npm |
+| **yarn** | Classic vs Berry split; lockfile and Plug'n'Play behavior differ from npm — unnecessary variance for a small template repo |
+| **bun** | Fast runtime/installer, but not bundled with Node; toolchain differences (test runner, native deps) add “works on my machine” risk |
+
+**npm** ships with Node, works the same on every OS, matches Vercel’s default install,
+and keeps onboarding to “install Node 20+, clone, `npm install`”. No Corepack, no
+alternate lockfile story. Individual devs can use pnpm locally if they want; the
+documented path and CI assume npm.
+
+---
+
+## UI & styling
+
+**Tailwind CSS v4** + **[shadcn/ui](https://ui.shadcn.com/docs)** on top of
+**[Radix UI](https://www.radix-ui.com/primitives/docs/overview/getting-started)**
+primitives. Styling lives in utility classes and theme tokens in `src/index.css`;
+components live as **your source code** under `src/components/ui/`, not as an opaque
+npm package.
+
+### Why Tailwind (not MUI, Ant Design, Chakra, …)
+
+Traditional component libraries (MUI, Ant Design, Chakra, Mantine, Blueprint, …)
+ship as **closed npm packages**: you import `<Button>`, then fight the library when
+you need a different look, a missing variant, or a mix of APIs from two libraries.
+Overrides mean `sx` props, theme overrides, CSS specificity wars, or wrapper
+components.
+
+**Tailwind** inverts that: styling is **class names in JSX** — predictable,
+greppable, and easy to change in place. Tailwind v4 integrates with Vite via
+`@tailwindcss/vite`, uses CSS-first theme tokens (`@theme` in `index.css`), and
+covers layout, spacing, typography, responsive breakpoints, dark mode, and states
+without a separate styling system.
+
+| Approach | Tradeoff for this project |
+| -------- | ------------------------- |
+| **MUI / Ant Design / Chakra** | Strong defaults, but heavy runtime/theming, harder to diverge from the library's look, bundle size, and vendor lock-in on component APIs |
+| **React Aria / React Spectrum** | Excellent accessibility primitives, but you still build and style every surface yourself — no shared visual system out of the box |
+| **Headless UI + hand-rolled CSS** | Flexible, but repeats work shadcn already solved (composition + Tailwind recipes) |
+| **Tailwind + shadcn/ui** | Utilities for all layout/visual concerns; copied components you own; Radix handles a11y behavior |
+
+We do **not** add SCSS modules, Panda CSS, Vanilla Extract, Styled Components, or
+Emotion on top. Tailwind already gives atomic utilities, design tokens, dark mode,
+and co-location of styles with markup. A second CSS-in-JS or compile-to-CSS layer
+adds tooling and mental overhead without buying much here.
+
+### Why Tailwind pairs well with AI-assisted UI work
+
+Most LLMs and coding agents are trained heavily on **Tailwind class strings**.
+Asking for “a responsive card with a muted header and primary CTA” tends to produce
+working `className` output directly — no prop API to learn, no theme object to
+reverse-engineer. That matters for a fitness-coach product where chat, forms, and
+dashboard surfaces evolve quickly: you iterate in JSX, not across wrapper layers.
+
+Contrast: generating correct MUI `sx`/`slotProps` or Ant Design `token` overrides
+is slower and more error-prone in AI workflows. Tailwind keeps the feedback loop
+**read class → tweak class**.
+
+### shadcn/ui — open code, not a closed library
+
+[shadcn/ui](https://ui.shadcn.com/docs) is **not** a traditional component library
+you install from npm and import unchanged. From the docs:
+
+> **This is not a component library. It is how you build your component library.**
+
+Core ideas:
+
+| Principle | What it means here |
+| --------- | ------------------ |
+| **Open code** | CLI **copies** component source into `src/components/ui/`. You see and edit every line — no black-box `node_modules` UI. |
+| **Composition** | Shared patterns (`Button`, `Dialog`, `Form`) so new screens and AI-generated UI stay consistent. |
+| **Distribution** | `components.json` + `npx shadcn@latest add <name>` — add only what you need. |
+| **Beautiful defaults** | **radix-nova** style in this repo; tokens in `index.css`. |
+| **AI-ready** | Open files are easy for humans and agents to read, extend, and regenerate consistently. |
+
+If a button needs a new variant, you **edit** `src/components/ui/button.tsx` — you
+do not wrap a package export or override with `!important`.
+
+Upstream updates: when shadcn publishes fixes, you diff and merge into your copy
+(or re-add and re-apply local edits). You trade automatic semver bumps for **full
+ownership** of the UI layer — the right trade for a long-lived product template.
+
+### Headless primitives → accessibility without reinventing behavior
+
+shadcn/ui builds on **headless** libraries — **[Radix UI](https://www.radix-ui.com/primitives)** in this project (Base UI is supported in newer shadcn stacks).
+Radix owns the hard parts:
+
+- focus management and focus traps in dialogs/sheets
+- keyboard navigation (menus, combobox, tabs)
+- ARIA roles, labels, and `aria-*` wiring
+- pointer vs keyboard interaction patterns
+- portal layering and scroll locking
+
+Tailwind + shadcn only **skin** those primitives. You get accessible behavior by
+default and still control visuals via classes and CSS variables (`--background`,
+`--primary`, … in `src/index.css`).
+
+Do not swap Radix behavior for raw `<div onClick>` overlays — keep using the
+shadcn/Radix building blocks for anything interactive (dialogs, dropdowns, tooltips,
+command palette, sidebar).
+
+### Practical layout in this repo
+
+```
+src/index.css           # Tailwind v4 + @theme tokens + .dark variables
+src/components/ui/      # shadcn copies (CLI-managed, you may edit)
+src/lib/utils.ts        # cn() — clsx + tailwind-merge
+components.json         # shadcn CLI config (radix-nova, paths, icons)
+```
+
+Theme toggling (light / dark / system) is client state in Zustand; `root-layout`
+applies the `.dark` class on `<html>`. See [State management](#state-management).
+
 ---
 
 ## Routes
@@ -194,6 +411,9 @@ src/
 ```
 
 ### shadcn/ui (`src/components/ui/`)
+
+See [UI & styling](#ui--styling) for why we use Tailwind + open-code shadcn instead
+of closed UI libraries.
 
 **radix-nova** style. Add components:
 
