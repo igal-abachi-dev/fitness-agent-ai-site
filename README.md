@@ -16,7 +16,7 @@ pages are all in place. The streaming **chat UI** is the next layer to build.
 
 ### Prerequisites
 
-- Node.js 20+ and **npm** (see [Build tool & app shape](#build-tool--app-shape))
+- Node.js 22+ and **npm** (see [Build tool & app shape](#build-tool--app-shape))
 - Backend API running locally (default `http://localhost:3000`) for `/ask`, `/plan`,
   and `/chat` — optional for UI-only work
 
@@ -58,7 +58,7 @@ npm run gen:api       # regenerate OpenAPI types (backend must be on :3000)
 | Goal | Start here |
 | ---- | ---------- |
 | New page / route | `src/routes/<name>.tsx` + register in `src/app/router.tsx` |
-| API call + cache | `src/features/<feature>/api/` → `queries.ts` → route component |
+| API call + cache | `src/features/<feature>/api/` + `queries.ts` → route component |
 | Client-only state | `src/stores/slices/` + selector hooks in `useAppStore.ts` |
 | Reusable UI | `src/components/` or shadcn: `npx shadcn@latest add <name>` |
 | Forms | React Hook Form + Zod (see `src/features/profile/`) |
@@ -110,8 +110,9 @@ src/routes/*.tsx    Page components (home, chat, ask, plan, not-found)
 
 ### `src/app/root-layout.tsx`
 
-- Cross-cutting UI only: **theme** (`.dark` on `<html>`), **document title**
-  (`usePageTitle`), **scroll restoration**, **toasts** (Sonner), **tooltips**
+- Cross-cutting UI only: **theme** (`.dark` on `<html>`), **document title and
+  meta tags** (`useRouteMeta`), **scroll restoration**, **toasts** (Sonner),
+  **tooltips**
 - Renders `<Outlet />` — children are `AppShell` and pages
 - Safe to touch `document` / `matchMedia` (no SSR)
 
@@ -133,7 +134,7 @@ src/routes/*.tsx    Page components (home, chat, ask, plan, not-found)
 | Testing            | [Vitest](https://vitest.dev/guide/) + [Testing Library](https://testing-library.com/docs/react-testing-library/intro/) + [MSW](https://mswjs.io/docs/quick-start) (jsdom) |
 
 > `react-router` v8 uses the same data-mode API as v7 (`createBrowserRouter` +
-> route objects). which is like ssr:false
+> route objects) — client-only, no SSR.
 
 See [Build tool & app shape](#build-tool--app-shape) for why we use Vite + Router
 data mode instead of Next.js or the React Router framework scaffold.
@@ -245,7 +246,7 @@ npm run dev
 | **bun** | Fast runtime/installer, but not bundled with Node; toolchain differences (test runner, native deps) add “works on my machine” risk |
 
 **npm** ships with Node, works the same on every OS, matches Vercel’s default install,
-and keeps onboarding to “install Node 20+, clone, `npm install`”. No Corepack, no
+and keeps onboarding to “install Node 22+, clone, `npm install`”. No Corepack, no
 alternate lockfile story. Individual devs can use pnpm locally if they want; the
 documented path and CI assume npm.
 
@@ -338,7 +339,8 @@ default and still control visuals via classes and CSS variables (`--background`,
 
 Do not swap Radix behavior for raw `<div onClick>` overlays — keep using the
 shadcn/Radix building blocks for anything interactive (dialogs, dropdowns, tooltips,
-command palette, sidebar).
+command palette). The app shell sidebar is custom (`AppSidebar`), not a shadcn
+component.
 
 ### Practical layout in this repo
 
@@ -398,7 +400,7 @@ src/
     chat/                 # /chat SSE via AI SDK
     profile/              # assessment modal + Zod schema
   routes/                 # lazy page modules (export Component)
-  hooks/                  # use-media-query, use-page-title, …
+  hooks/                  # use-media-query, use-route-meta, …
   lib/
     api/http.ts           # typed fetch seam
     api/v1.d.ts           # GENERATED OpenAPI types
@@ -513,6 +515,7 @@ email/OAuth providers when you need accounts.
 | **Auth0** | ~25K MAU | Heavier; Okta has a habit of tightening limits. |
 | **Supabase Auth** | ~50K MAU | Built for Supabase Postgres + RLS. Bolting onto Neon + Fastify is against the grain. |
 
+---
 
 ## State management
 
@@ -545,7 +548,7 @@ Both are small, TypeScript-friendly client-state libraries. The architectural fo
 is how they integrate with React:
 
 | | Zustand | Jotai |
-| - | ------- | ----- |
+| --- | ------- | ----- |
 | Model | Explicit external store (`getState`, `setState`, `subscribe`) | Atomic dependency graph (`atom`, derived atoms) |
 | React binding | `React.useSyncExternalStore` directly | `useReducer` + `store.sub` + `React.use` — **no** `useSyncExternalStore` |
 | Tearing under concurrency | Anti-tearing guarantee from React's official external-store primitive | Relies on Jotai's own atom propagation (works well in practice, not the same guarantee) |
@@ -725,7 +728,7 @@ Typical prod scores (desktop): **Performance ~98**, Accessibility **100**, SEO *
 | Title + meta description | `index.html` |
 | Open Graph + Twitter cards | `index.html` |
 | `robots.txt` | `public/robots.txt` |
-| Per-route tab titles | `src/hooks/use-page-title.ts` (via `root-layout`) |
+| Per-route titles + meta | `src/hooks/use-route-meta.ts` (via `root-layout`) |
 
 ### After Vercel deploy
 
