@@ -141,6 +141,101 @@ data mode instead of Next.js or the React Router framework scaffold.
 
 ---
 
+### Practical layout in this repo
+
+```
+src/index.css           # Tailwind v4 + @theme tokens + .dark variables
+src/components/ui/      # shadcn copies (CLI-managed, you may edit)
+src/lib/utils.ts        # cn() — clsx + tailwind-merge
+components.json         # shadcn CLI config (radix-nova, paths, icons)
+```
+
+Theme toggling (light / dark / system) is client state in Zustand; `root-layout`
+applies the `.dark` class on `<html>`. See [State management](#state-management).
+
+---
+
+## Routes
+
+All pages render inside the app shell (sidebar + main pane).
+
+| Path     | Page          | Backend endpoint        | Status                          |
+| -------- | ------------- | ----------------------- | ------------------------------- |
+| `/`      | Home          | —                       | landing / dev sandbox           |
+| `/chat`  | Coach chat    | `POST /v1/coach/chat`   | transport wired; UI next        |
+| `/ask`   | Ask the coach | `POST /v1/coach/ask`    | prompt form (RHF+Zod) + answer  |
+| `/plan`  | Build a plan  | `POST /v1/coach/plan`   | generates from saved profile    |
+| `*`      | 404           | —                       | not found (inside shell)        |
+
+Sidebar uses `NavLink` with active state styling.
+
+---
+
+## Project structure
+
+```
+fitness-agent-ai-site/
+  index.html              # HTML shell + SEO meta
+  public/
+    robots.txt            # crawlers (copied to dist/)
+    favicon.svg
+  components.json         # shadcn CLI config (radix-nova)
+  vite.config.ts          # Vite + Vitest + @ alias
+  tsconfig.json           # project refs + paths (for shadcn CLI on Windows)
+  tsconfig.app.json       # app TS strict config + @/* paths
+
+src/
+  main.tsx                # React entry (Query → Router)
+  index.css               # Tailwind v4 + theme tokens
+  app/
+    router.tsx            # route tree
+    root-layout.tsx       # global shell (theme, title, toasts)
+  components/
+    layout/               # app-shell, app-sidebar
+    ui/                   # shadcn primitives (CLI-managed)
+    shared/               # route-error, etc.
+  features/               # feature-first slices
+    coach/                # /plan + /ask over http<T>()
+    chat/                 # /chat SSE via AI SDK
+    profile/              # assessment modal + Zod schema
+  routes/                 # lazy page modules (export Component)
+  hooks/                  # use-media-query, use-route-meta, …
+  lib/
+    api/http.ts           # typed fetch seam
+    api/v1.d.ts           # GENERATED OpenAPI types
+    env.ts                # VITE_* access
+    query-client.ts
+  stores/
+    useAppStore.ts        # Zustand + persist + selector hooks
+    slices/               # ui, chat-draft, profile
+  test/                   # Vitest setup + MSW handlers
+```
+
+### shadcn/ui (`src/components/ui/`)
+
+See [UI & styling](#ui--styling) for why we use Tailwind + open-code shadcn instead
+of closed UI libraries.
+
+**radix-nova** style. Add components:
+
+```bash
+npx shadcn@latest add <name>
+```
+
+**Windows quirk:** the CLI reads path aliases from root `tsconfig.json`. If files
+land in a stray `@/components/ui/` folder, move them to `src/components/ui/`.
+Both `tsconfig.json` and `tsconfig.app.json` must keep `"@/*": ["./src/*"]`.
+
+| Group | Components |
+| ----- | ---------- |
+| Forms | `button`, `input`, `textarea`, `label`, `select`, `checkbox`, `switch`, `form`, `input-group` |
+| Layout | `card`, `separator`, `scroll-area`, `tabs`, `collapsible` |
+| Overlays | `dialog`, `dropdown-menu`, `tooltip`, `command` |
+| Feedback | `alert`, `sonner`, `skeleton` |
+| Display | `avatar`, `badge` |
+
+---
+
 ## Build tool & app shape
 
 This repo follows React’s [**build from scratch**](https://react.dev/learn/build-a-react-app-from-scratch)
@@ -341,99 +436,6 @@ Do not swap Radix behavior for raw `<div onClick>` overlays — keep using the
 shadcn/Radix building blocks for anything interactive (dialogs, dropdowns, tooltips,
 command palette). The app shell sidebar is custom (`AppSidebar`), not a shadcn
 component.
-
-### Practical layout in this repo
-
-```
-src/index.css           # Tailwind v4 + @theme tokens + .dark variables
-src/components/ui/      # shadcn copies (CLI-managed, you may edit)
-src/lib/utils.ts        # cn() — clsx + tailwind-merge
-components.json         # shadcn CLI config (radix-nova, paths, icons)
-```
-
-Theme toggling (light / dark / system) is client state in Zustand; `root-layout`
-applies the `.dark` class on `<html>`. See [State management](#state-management).
-
----
-
-## Routes
-
-All pages render inside the app shell (sidebar + main pane).
-
-| Path     | Page          | Backend endpoint        | Status                          |
-| -------- | ------------- | ----------------------- | ------------------------------- |
-| `/`      | Home          | —                       | landing / dev sandbox           |
-| `/chat`  | Coach chat    | `POST /v1/coach/chat`   | transport wired; UI next        |
-| `/ask`   | Ask the coach | `POST /v1/coach/ask`    | prompt form (RHF+Zod) + answer  |
-| `/plan`  | Build a plan  | `POST /v1/coach/plan`   | generates from saved profile    |
-| `*`      | 404           | —                       | not found (inside shell)        |
-
-Sidebar uses `NavLink` with active state styling.
-
----
-
-## Project structure
-
-```
-fitness-agent-ai-site/
-  index.html              # HTML shell + SEO meta
-  public/
-    robots.txt            # crawlers (copied to dist/)
-    favicon.svg
-  components.json         # shadcn CLI config (radix-nova)
-  vite.config.ts          # Vite + Vitest + @ alias
-  tsconfig.json           # project refs + paths (for shadcn CLI on Windows)
-  tsconfig.app.json       # app TS strict config + @/* paths
-
-src/
-  main.tsx                # React entry (Query → Router)
-  index.css               # Tailwind v4 + theme tokens
-  app/
-    router.tsx            # route tree
-    root-layout.tsx       # global shell (theme, title, toasts)
-  components/
-    layout/               # app-shell, app-sidebar
-    ui/                   # shadcn primitives (CLI-managed)
-    shared/               # route-error, etc.
-  features/               # feature-first slices
-    coach/                # /plan + /ask over http<T>()
-    chat/                 # /chat SSE via AI SDK
-    profile/              # assessment modal + Zod schema
-  routes/                 # lazy page modules (export Component)
-  hooks/                  # use-media-query, use-route-meta, …
-  lib/
-    api/http.ts           # typed fetch seam
-    api/v1.d.ts           # GENERATED OpenAPI types
-    env.ts                # VITE_* access
-    query-client.ts
-  stores/
-    useAppStore.ts        # Zustand + persist + selector hooks
-    slices/               # ui, chat-draft, profile
-  test/                   # Vitest setup + MSW handlers
-```
-
-### shadcn/ui (`src/components/ui/`)
-
-See [UI & styling](#ui--styling) for why we use Tailwind + open-code shadcn instead
-of closed UI libraries.
-
-**radix-nova** style. Add components:
-
-```bash
-npx shadcn@latest add <name>
-```
-
-**Windows quirk:** the CLI reads path aliases from root `tsconfig.json`. If files
-land in a stray `@/components/ui/` folder, move them to `src/components/ui/`.
-Both `tsconfig.json` and `tsconfig.app.json` must keep `"@/*": ["./src/*"]`.
-
-| Group | Components |
-| ----- | ---------- |
-| Forms | `button`, `input`, `textarea`, `label`, `select`, `checkbox`, `switch`, `form`, `input-group` |
-| Layout | `card`, `separator`, `scroll-area`, `tabs`, `collapsible` |
-| Overlays | `dialog`, `dropdown-menu`, `tooltip`, `command` |
-| Feedback | `alert`, `sonner`, `skeleton` |
-| Display | `avatar`, `badge` |
 
 ---
 
