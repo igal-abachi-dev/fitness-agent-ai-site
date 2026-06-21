@@ -1,7 +1,7 @@
 # Fitness Agent AI
 
 Client-only SPA for a fitness / health / nutrition AI coach. It talks to the
-**AI Fitness Coach API** (Fastify + Vercel AI SDK backend) over three endpoints:
+[**AI Fitness Coach API**](https://github.com/igal-abachi-dev/ai-fitness-expert-coach) (Fastify + Vercel AI SDK backend) over three endpoints:
 a structured plan generator, a one-shot ask, and a streaming chat.
 
 The app frame (collapsible sidebar shell), routing, networking seam, typed API
@@ -117,21 +117,21 @@ src/routes/*.tsx    Page components (home, chat, ask, plan, not-found)
 
 ## Stack
 
-| Concern            | Choice                                              |
-| ------------------ | --------------------------------------------------- |
-| Framework          | React 19                                            |
-| Build / dev        | Vite 8 + TypeScript 6 (strict)                       |
-| Routing            | React Router (data mode, client-only — no SSR)      |
-| Server state       | TanStack Query v5                                    |
-| Client / UI state  | Zustand v5 (slices pattern)                          |
-| UI                 | shadcn/ui (Radix UI) + Tailwind CSS v4              |
-| Forms              | React Hook Form + Zod (`@hookform/resolvers`)       |
-| AI / streaming     | Vercel AI SDK (`ai`) + `@ai-sdk/react` (`useChat`)  |
-| Icons / toasts     | lucide-react · sonner                               |
-| Testing            | Vitest + Testing Library + MSW (jsdom)              |
+| Concern            | Choice                                                                 |
+| ------------------ | ---------------------------------------------------------------------- |
+| Framework          | [React 19](https://react.dev/learn/build-a-react-app-from-scratch)   |
+| Build / dev        | [Vite 8](https://vite.dev/guide/) + [TypeScript 6](https://www.typescriptlang.org/docs/handbook/2/basic-types.html) (strict) |
+| Routing            | [React Router v8](https://reactrouter.com/start/data/installation) (data mode, client-only — no SSR) |
+| Server state       | [TanStack Query v5](https://tanstack.com/query/latest/docs/framework/react/overview)                 |
+| Client / UI state  | [Zustand v5](https://zustand.docs.pmnd.rs/learn/guides/slices-pattern) (slices pattern)           |
+| UI                 | [shadcn/ui](https://ui.shadcn.com/docs/installation#use-cli) ([Radix UI](https://www.radix-ui.com/primitives/docs/overview/getting-started)) + [Tailwind CSS v4](https://tailwindcss.com/docs/installation/using-vite) |
+| Forms              | [React Hook Form](https://react-hook-form.com/get-started) + [Zod](https://zod.dev/) ([`@hookform/resolvers`](https://github.com/react-hook-form/resolvers#zod)) |
+| AI / streaming     | [Vercel AI SDK](https://ai-sdk.dev/docs/ai-sdk-ui/overview) (`ai`) + [`@ai-sdk/react`](https://ai-sdk.dev/docs/reference/ai-sdk-ui/use-chat) (`useChat`) |
+| Icons / toasts     | [lucide-react](https://lucide.dev/guide/installation#react) · [sonner](https://sonner.emilkowal.ski/) |
+| Testing            | [Vitest](https://vitest.dev/guide/) + [Testing Library](https://testing-library.com/docs/react-testing-library/intro/) + [MSW](https://mswjs.io/docs/quick-start) (jsdom) |
 
 > `react-router` v8 uses the same data-mode API as v7 (`createBrowserRouter` +
-> route objects).
+> route objects). which is like ssr:false
 
 ---
 
