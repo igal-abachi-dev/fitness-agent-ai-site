@@ -252,7 +252,9 @@ component → TanStack Query hook → feature api fn → http<T>() → fetch()
 - Query `retry` skips 4xx; pass `signal` from `queryFn` for cancellation
 - Streaming chat bypasses `http<T>()` — uses AI SDK `useChat` + SSE
 
-Regenerate types: `npm run gen:api` (backend on `:3000`).
+Regenerate types: `npm run gen:api` (backend on `:3000`). See
+[Why not a monorepo?](#why-not-a-monorepo) for the full Zod → OpenAPI → client
+type pipeline and the tradeoff with a shared contract package.
 
 ---
 
@@ -374,15 +376,26 @@ kept day-one setup simpler.
 
 ### The real reason: shared types
 
-The split is not really about deploy — it is about **where the contract lives**.
+The bigger structural issue is two repos **without a shared contract package**.
+Deploy simplicity is the main reason we kept them separate; type sharing is what
+a monorepo would actually buy you.
 
-Today the client keeps generated OpenAPI types in `src/lib/api/v1.d.ts`
-(`npm run gen:api`) because two repos cannot share source. That codegen gives
-**types only**. Form validation re-implements the same rules in
-`src/features/profile/profile.schema.ts` — those two can drift.
+**Current pipeline (two repos):**
 
-In a monorepo, a `packages/contract` exporting Zod schemas (e.g.
-`userAssessmentSchema`, response schemas) is the better end-state:
+```
+server:  Zod schemas → Fastify Swagger → OpenAPI JSON (/documentation/json)
+client:  openapi-typescript (npm run gen:api) → src/lib/api/v1.d.ts
+         → src/features/coach/types.ts (domain types)
+form:    src/features/profile/profile.schema.ts (second Zod — synced by hand)
+```
+
+OpenAPI codegen helps — it keeps **wire types** aligned with the server — but
+Zod validation rules live only on the API. The client re-derives types from the
+generated `.d.ts` and maintains its own form schema; constraints, enums, and
+optional fields can drift between those layers.
+
+In a monorepo, a shared `@coach/contract` package exporting Zod schemas (e.g.
+`userAssessmentSchema`, response schemas) is the more rigorous end-state:
 
 - **Server** validates requests with it and still emits Swagger via
   `fastify-type-provider-zod`
@@ -395,9 +408,11 @@ Some teams keep a generated-types boundary for looser coupling (client depends o
 HTTP contract only, not server Zod). That pays off with separate frontend/backend
 ownership at scale — less so on a solo project where you control both sides.
 
-**Clean end-state if consolidated:** `packages/contract` holds Zod (source of
-truth), server imports it for validation + OpenAPI, web imports it for forms +
-types. That is where a monorepo earns its setup cost — not deploy, the contract.
+For a solo project, **deploy simplicity** (Vercel + Render, one repo each) is a
+reasonable tradeoff. **Clean end-state if consolidated:** `@coach/contract` holds
+Zod (source of truth), server imports it for validation + OpenAPI, web imports it
+for forms + types. That is where a monorepo earns its setup cost — not deploy,
+the contract.
 
 ---
 
